@@ -162,9 +162,12 @@ class Dataset:
         return {}
 
     def sub_shape(self, drop_axis):
+        if not isinstance(drop_axis, list):
+            drop_axis = [drop_axis]
         shape = self.shape
         shape = list(shape)
-        shape.pop(drop_axis)
+        for i, a in enumerate(drop_axis):
+            shape.pop(a-i)
         return tuple(shape)
 
     def metadata(self):

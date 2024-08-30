@@ -18,7 +18,11 @@ from anemoi.utils.config import load_config as load_settings
 from .dataset import Dataset
 
 LOG = logging.getLogger(__name__)
-
+ALIASES = {
+    "all": ["select", "frequency", "start", "end"],
+    "dates": ["start", "end", "frequency"],
+    "variables": ["select"],
+}
 
 def load_config():
     return load_settings(defaults={"datasets": {"named": {}, "path": []}})
@@ -213,27 +217,23 @@ def _open(a):
     raise NotImplementedError(f"Unsupported argument: {type(a)}")
 
 
-def _auto_adjust(datasets, kwargs):
+def _auto_adjust(datasets, kwargs, aliases=ALIASES):
 
     if "adjust" not in kwargs:
+        print('here')
         return datasets, kwargs
 
     adjust_list = kwargs.pop("adjust")
     if not isinstance(adjust_list, (tuple, list)):
         adjust_list = [adjust_list]
 
-    ALIASES = {
-        "all": ["select", "frequency", "start", "end"],
-        "dates": ["start", "end", "frequency"],
-        "variables": ["select"],
-    }
 
     adjust_set = set()
 
     for a in adjust_list:
-        adjust_set.update(ALIASES.get(a, [a]))
+        adjust_set.update(aliases.get(a, [a]))
 
-    extra = set(adjust_set) - set(ALIASES["all"])
+    extra = set(adjust_set) - set(aliases["all"])
     if extra:
         raise ValueError(f"Invalid adjust keys: {extra}")
 
@@ -284,6 +284,7 @@ def _auto_adjust(datasets, kwargs):
 
 
 def _open_dataset(*args, **kwargs):
+
     sets = []
     for a in args:
         sets.append(_open(a))
@@ -329,6 +330,12 @@ def _open_dataset(*args, **kwargs):
 
         assert not sets, sets
         return cutout_factory(args, kwargs)
+    
+    if "multienccutout" in kwargs:
+        from .grids import multienccutout_factory
+
+        assert not sets, sets
+        return multienccutout_factory(args, kwargs)
 
     for name in ("datasets", "dataset"):
         if name in kwargs:

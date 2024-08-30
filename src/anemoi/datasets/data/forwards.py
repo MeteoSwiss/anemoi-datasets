@@ -205,11 +205,15 @@ class GivenAxis(Combined):
     """Given a given axis, combine the datasets along that axis."""
 
     def __init__(self, datasets, axis):
-        self.axis = axis
+        if not isinstance(axis, list):
+            self.axis = [axis]
+        else:
+            self.axis = axis
+            
         super().__init__(datasets)
 
-        assert axis > 0 and axis < len(self.datasets[0].shape), (
-            axis,
+        assert axis[-1] > 0 and axis[-1] < len(self.datasets[0].shape), (
+            axis[-1],
             self.datasets[0].shape,
         )
 
