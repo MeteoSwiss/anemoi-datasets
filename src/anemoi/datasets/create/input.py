@@ -106,32 +106,30 @@ def _data_request(data):
     area = grid = None
 
     for field in data:
-        try:
-            if date is None:
-                date = field.datetime()["valid_time"]
+        if not hasattr(field, "as_mars"):
+            continue
 
-            if field.datetime()["valid_time"] != date:
-                continue
+        if date is None:
+            date = field.datetime()["valid_time"]
 
-            as_mars = field.metadata(namespace="mars")
-            if not as_mars:
-                continue
-            step = as_mars.get("step")
-            levtype = as_mars.get("levtype", "sfc")
-            param = as_mars["param"]
-            levelist = as_mars.get("levelist", None)
-            area = field.mars_area
-            grid = field.mars_grid
+        if field.datetime()["valid_time"] != date:
+            continue
 
-            if levelist is None:
-                params_levels[levtype].add(param)
-            else:
-                params_levels[levtype].add((param, levelist))
+        as_mars = field.metadata(namespace="mars")
+        step = as_mars.get("step")
+        levtype = as_mars.get("levtype", "sfc")
+        param = as_mars["param"]
+        levelist = as_mars.get("levelist", None)
+        area = field.mars_area
+        grid = field.mars_grid
 
-            if step:
-                params_steps[levtype].add((param, step))
-        except Exception:
-            LOG.error(f"Error in retrieving metadata (cannot build data request info) for {field}", exc_info=True)
+        if levelist is None:
+            params_levels[levtype].add(param)
+        else:
+            params_levels[levtype].add((param, levelist))
+
+        if step:
+            params_steps[levtype].add((param, step))
 
     def sort(old_dic):
         new_dic = {}
@@ -279,9 +277,6 @@ class Result:
         if len(args) == 1 and isinstance(args[0], (list, tuple)):
             args = args[0]
 
-        # print("Executing", self.action_path)
-        # print("Dates:", compress_dates(self.dates))
-
         names = []
         for a in args:
             if isinstance(a, str):
@@ -290,13 +285,14 @@ class Result:
                 names += list(a.keys())
 
         print(f"Building a {len(names)}D hypercube using", names)
+
         ds = ds.order_by(*args, remapping=remapping, patches=patches)
-        user_coords = ds.unique_values(*names, remapping=remapping, patches=patches, progress_bar=False)
+        user_coords = ds.unique_values(*names, remapping=remapping, patches=patches)
 
         print()
         print("Number of unique values found for each coordinate:")
         for k, v in user_coords.items():
-            print(f"  {k:20}:", len(v), shorten_list(v, max_length=10))
+            print(f"  {k:20}:", len(v))
         print()
         user_shape = tuple(len(v) for k, v in user_coords.items())
         print("Shape of the hypercube           :", user_shape)
@@ -309,18 +305,13 @@ class Result:
 
         remapping = build_remapping(remapping, patches)
         expected = set(itertools.product(*user_coords.values()))
-        extra = set()
 
         if math.prod(user_shape) > len(ds):
             print(f"This means that all the fields in the datasets do not exists for all combinations of {names}.")
 
             for f in ds:
                 metadata = remapping(f.metadata)
-                key = tuple(metadata(n, default=None) for n in names)
-                if key in expected:
-                    expected.remove(key)
-                else:
-                    extra.add(key)
+                expected.remove(tuple(metadata(n) for n in names))
 
             print("Missing fields:")
             print()
@@ -330,35 +321,7 @@ class Result:
                     print("...", len(expected) - i - 1, "more")
                     break
 
-            print("Extra fields:")
             print()
-            for i, f in enumerate(sorted(extra)):
-                print(" ", f)
-                if i >= 9 and len(extra) > 10:
-                    print("...", len(extra) - i - 1, "more")
-                    break
-
-            print()
-            print("Missing values:")
-            per_name = defaultdict(set)
-            for e in expected:
-                for n, v in zip(names, e):
-                    per_name[n].add(v)
-
-            for n, v in per_name.items():
-                print(" ", n, len(v), shorten_list(sorted(v), max_length=10))
-            print()
-
-            print("Extra values:")
-            per_name = defaultdict(set)
-            for e in extra:
-                for n, v in zip(names, e):
-                    per_name[n].add(v)
-
-            for n, v in per_name.items():
-                print(" ", n, len(v), shorten_list(sorted(v), max_length=10))
-            print()
-
             print("To solve this issue, you can:")
             print(
                 "  - Provide a better selection, like 'step: 0' or 'level: 1000' to "

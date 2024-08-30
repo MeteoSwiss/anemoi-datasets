@@ -7,64 +7,40 @@
 # nor does it submit to any jurisdiction.
 #
 
-import logging
-
 import numpy as np
-
-LOG = logging.getLogger(__name__)
 
 
 def plot_mask(path, mask, lats, lons, global_lats, global_lons):
     import matplotlib.pyplot as plt
 
+    middle = (np.amin(lons) + np.amax(lons)) / 2
+    print("middle", middle)
     s = 1
 
+    # gmiddle = (np.amin(global_lons)+ np.amax(global_lons))/2
+
+    # print('gmiddle', gmiddle)
+    # global_lons = global_lons-gmiddle+middle
     global_lons[global_lons >= 180] -= 360
 
     plt.figure(figsize=(10, 5))
     plt.scatter(global_lons, global_lats, s=s, marker="o", c="r")
-    if isinstance(path, str):
-        plt.savefig(path + "-global.png")
+    plt.savefig(path + "-global.png")
 
     plt.figure(figsize=(10, 5))
     plt.scatter(global_lons[mask], global_lats[mask], s=s, c="k")
-    if isinstance(path, str):
-        plt.savefig(path + "-cutout.png")
+    plt.savefig(path + "-cutout.png")
 
     plt.figure(figsize=(10, 5))
     plt.scatter(lons, lats, s=s)
-    if isinstance(path, str):
-        plt.savefig(path + "-lam.png")
+    plt.savefig(path + "-lam.png")
     # plt.scatter(lons, lats, s=0.01)
 
     plt.figure(figsize=(10, 5))
     plt.scatter(global_lons[mask], global_lats[mask], s=s, c="r")
     plt.scatter(lons, lats, s=s)
-    if isinstance(path, str):
-        plt.savefig(path + "-both.png")
+    plt.savefig(path + "-both.png")
     # plt.scatter(lons, lats, s=0.01)
-
-    plt.figure(figsize=(10, 5))
-    plt.scatter(global_lons[mask], global_lats[mask], s=s, c="r")
-    plt.scatter(lons, lats, s=s)
-    plt.xlim(np.amin(lons) - 1, np.amax(lons) + 1)
-    plt.ylim(np.amin(lats) - 1, np.amax(lats) + 1)
-    if isinstance(path, str):
-        plt.savefig(path + "-both-zoomed.png")
-
-    plt.figure(figsize=(10, 5))
-    plt.scatter(global_lons[mask], global_lats[mask], s=s, c="r")
-    plt.xlim(np.amin(lons) - 1, np.amax(lons) + 1)
-    plt.ylim(np.amin(lats) - 1, np.amax(lats) + 1)
-    if isinstance(path, str):
-        plt.savefig(path + "-global-zoomed.png")
-
-
-def xyz_to_latlon(x, y, z):
-    return (
-        np.rad2deg(np.arcsin(np.minimum(1.0, np.maximum(-1.0, z)))),
-        np.rad2deg(np.arctan2(y, x)),
-    )
 
 
 def latlon_to_xyz(lat, lon, radius=1.0):
@@ -145,13 +121,11 @@ def cutout_mask(
     global_lats,
     global_lons,
     cropping_distance=2.0,
-    neighbours=5,
     min_distance_km=None,
     plot=None,
 ):
     """Return a mask for the points in [global_lats, global_lons] that are inside of [lats, lons]"""
     from scipy.spatial import KDTree
-    from scipy.spatial import distance_matrix
 
     # TODO: transform min_distance from lat/lon to xyz
 
@@ -192,52 +166,56 @@ def cutout_mask(
 
     # Use a KDTree to find the nearest points
     kdtree = KDTree(lam_points)
-
-    distances, indices = kdtree.query(global_points, k=neighbours)
+    distances, indices = kdtree.query(global_points, k=3)
 
     if min_distance_km is not None:
         min_distance = min_distance_km / 6371.0
     else:
-        min_distance = 0
-        dm = distance_matrix(global_points, global_points)
-        min_distance = np.min(dm[dm > 0])
+        # Estimnation of the minimum distance between two grib points
 
-    LOG.debug(f"cutout_mask using min_distance = {min_distance * 6371.0} km")
+        glats = sorted(set(global_lats_masked))
+        glons = sorted(set(global_lons_masked))
+        min_dlats = np.min(np.diff(glats))
+        min_dlons = np.min(np.diff(glons))
 
-    # Centre of the Earth
-    zero = np.array([0.0, 0.0, 0.0])
+        # Use the centre of the LAM grid as the reference point
+        centre = np.mean(lats), np.mean(lons)
+        centre_xyz = np.array(latlon_to_xyz(*centre))
 
-    # After the loop, 'inside_lam' will contain a list point to EXCLUDE
-    inside_lam = []
-
-    for i, (global_point, distance, index) in enumerate(zip(global_points, distances, indices)):
-
-        # We check more than one triangle in case te global point
-        # is near the edge of triangle, (the lam point and global points are colinear)
-
-        inside = False
-        for j in range(neighbours):
-            t = Triangle3D(
-                lam_points[index[j]], lam_points[index[(j + 1) % neighbours]], lam_points[index[(j + 2) % neighbours]]
+        pt1 = np.array(latlon_to_xyz(centre[0] + min_dlats, centre[1]))
+        pt2 = np.array(latlon_to_xyz(centre[0], centre[1] + min_dlons))
+        min_distance = (
+            min(
+                np.linalg.norm(pt1 - centre_xyz),
+                np.linalg.norm(pt2 - centre_xyz),
             )
-            inside = t.intersect(zero, global_point)
-            if inside:
-                break
+            / 2.0
+        )
 
+    zero = np.array([0.0, 0.0, 0.0])
+    ok = []
+    for i, (global_point, distance, index) in enumerate(zip(global_points, distances, indices)):
+        t = Triangle3D(lam_points[index[0]], lam_points[index[1]], lam_points[index[2]])
+        # distance = np.min(distance)
+        # The point is inside the triangle if the intersection with the ray
+        # from the point to the centre of the Earth is not None
+        # (the direction of the ray is not important)
+
+        intersect = t.intersect(zero, global_point)
         close = np.min(distance) <= min_distance
 
-        inside_lam.append(inside or close)
+        ok.append(intersect or close)
 
     j = 0
-    inside_lam = np.array(inside_lam)
+    ok = np.array(ok)
     for i, m in enumerate(mask):
         if not m:
             continue
 
-        mask[i] = inside_lam[j]
+        mask[i] = ok[j]
         j += 1
 
-    assert j == len(inside_lam)
+    assert j == len(ok)
 
     # Invert the mask, so we have only the points outside the cutout
     mask = ~mask

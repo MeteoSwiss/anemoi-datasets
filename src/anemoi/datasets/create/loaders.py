@@ -17,10 +17,6 @@ import numpy as np
 import tqdm
 import zarr
 from anemoi.utils.config import DotDict
-from anemoi.utils.dates import as_datetime
-from anemoi.utils.dates import frequency_to_string
-from anemoi.utils.dates import frequency_to_timedelta
-from anemoi.utils.humanize import compress_dates
 from anemoi.utils.humanize import seconds_to_human
 
 from anemoi.datasets import MissingDateError
@@ -41,7 +37,6 @@ from .statistics import TmpStatistics
 from .statistics import check_variance
 from .statistics import compute_statistics
 from .statistics import default_statistics_dates
-from .statistics import fix_variance
 from .utils import normalize_and_check_dates
 from .writer import ViewCacheArray
 from .zarr import ZarrBuiltRegistry
@@ -50,20 +45,6 @@ from .zarr import add_zarr_dataset
 LOG = logging.getLogger(__name__)
 
 VERSION = "0.20"
-
-
-def json_tidy(o):
-
-    if isinstance(o, datetime.datetime):
-        return o.isoformat()
-
-    if isinstance(o, datetime.datetime):
-        return o.isoformat()
-
-    if isinstance(o, datetime.timedelta):
-        return frequency_to_string(o)
-
-    raise TypeError(repr(o) + " is not JSON serializable")
 
 
 def set_to_test_mode(cfg):
@@ -177,7 +158,7 @@ class GenericDatasetHandler:
                 v = v.astype(datetime.datetime)
             if isinstance(v, datetime.date):
                 v = v.isoformat()
-            z.attrs[k] = json.loads(json.dumps(v, default=json_tidy))
+            z.attrs[k] = v
 
     def _add_dataset(self, mode="r+", **kwargs):
         z = zarr.open(self.path, mode=mode)
@@ -296,7 +277,7 @@ class InitialiserLoader(Loader):
 
         dates = self.groups.dates
         frequency = dates.frequency
-        assert isinstance(frequency, datetime.timedelta), frequency
+        assert isinstance(frequency, int), frequency
 
         LOG.info(f"Found {len(dates)} datetimes.")
         LOG.info(f"Dates: Found {len(dates)} datetimes, in {len(self.groups)} groups: ")
@@ -461,23 +442,13 @@ class ContentLoader(Loader):
         dates = result.dates
 
         cube = result.get_cube()
+        assert cube.extended_user_shape[0] == len(dates), (
+            cube.extended_user_shape[0],
+            len(dates),
+        )
+
         shape = cube.extended_user_shape
         dates_in_data = cube.user_coords["valid_datetime"]
-
-        if cube.extended_user_shape[0] != len(dates):
-            print(f"Cube shape does not match the number of dates {cube.extended_user_shape[0]}, {len(dates)}")
-            print("Requested dates", compress_dates(dates))
-            print("Cube dates", compress_dates(dates_in_data))
-
-            a = set(as_datetime(_) for _ in dates)
-            b = set(as_datetime(_) for _ in dates_in_data)
-
-            print("Missing dates", compress_dates(a - b))
-            print("Extra dates", compress_dates(b - a))
-
-            raise ValueError(
-                f"Cube shape does not match the number of dates {cube.extended_user_shape[0]}, {len(dates)}"
-            )
 
         LOG.debug(f"Loading {shape=} in {self.data_array.shape=}")
 
@@ -758,10 +729,8 @@ class GenericAdditions(GenericDatasetHandler):
         assert sums.shape == mean.shape
 
         x = squares / count - mean * mean
-        # x[- 1e-15 < (x / (np.sqrt(squares / count) + np.abs(mean))) < 0] = 0
         # remove negative variance due to numerical errors
-        for i, name in enumerate(self.variables):
-            x[i] = fix_variance(x[i], name, agg["count"][i : i + 1], agg["sums"][i : i + 1], agg["squares"][i : i + 1])
+        # x[- 1e-15 < (x / (np.sqrt(squares / count) + np.abs(mean))) < 0] = 0
         check_variance(x, self.variables, minimum, maximum, mean, count, sums, squares)
 
         stdev = np.sqrt(x)
@@ -894,20 +863,16 @@ class TendenciesStatisticsAddition(GenericAdditions):
         full_ds = open_dataset(path)
         self.variables = full_ds.variables
 
-        frequency = frequency_to_timedelta(full_ds.frequency)
+        frequency = full_ds.frequency
         if delta is None:
             delta = frequency
-
-        delta = frequency_to_timedelta(delta)
-
-        if not delta.total_seconds() % frequency.total_seconds() == 0:
+        assert isinstance(delta, int), delta
+        if not delta % frequency == 0:
             raise TendenciesStatisticsDeltaNotMultipleOfFrequency(
                 f"Delta {delta} is not a multiple of frequency {frequency}"
             )
         self.delta = delta
-        idelta = delta.total_seconds() // frequency.total_seconds()
-        assert int(idelta) == idelta, idelta
-        idelta = int(idelta)
+        idelta = delta // frequency
 
         super().__init__(path=path, **kwargs)
 
@@ -931,7 +896,10 @@ class TendenciesStatisticsAddition(GenericAdditions):
 
     @classmethod
     def final_storage_name_from_delta(_, k, delta):
-        delta = frequency_to_string(delta)
+        if isinstance(delta, int):
+            delta = str(delta)
+        if not delta.endswith("h"):
+            delta = delta + "h"
         return f"statistics_tendencies_{delta}_{k}"
 
     def run(self, parts):

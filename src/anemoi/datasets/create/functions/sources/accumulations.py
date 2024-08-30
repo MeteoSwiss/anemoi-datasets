@@ -15,10 +15,11 @@ import earthkit.data as ekd
 import numpy as np
 from earthkit.data.core.temporary import temp_file
 from earthkit.data.readers.grib.output import new_grib_output
+from earthkit.data.utils.availability import Availability
 
 from anemoi.datasets.create.utils import to_datetime_list
 
-from .mars import mars
+from .mars import use_grib_paramid
 
 LOG = logging.getLogger(__name__)
 
@@ -306,11 +307,26 @@ def _compute_accumulations(
     for date, time, steps in mars_date_time_steps:
         for p in param:
             for n in number:
-                r = dict(request, param=p, date=date, time=time, step=sorted(steps), number=n)
+                requests.append(
+                    patch(
+                        {
+                            "param": p,
+                            "date": date,
+                            "time": time,
+                            "step": sorted(steps),
+                            "number": n,
+                        }
+                    )
+                )
 
-                requests.append(patch(r))
-
-    ds = mars(context, dates, *requests, request_already_using_valid_datetime=True)
+    compressed = Availability(requests)
+    ds = ekd.from_source("empty")
+    for r in compressed.iterate():
+        request.update(r)
+        if context.use_grib_paramid and "param" in request:
+            request = use_grib_paramid(request)
+        print("🌧️", request)
+        ds = ds + ekd.from_source("mars", **request)
 
     accumulations = {}
     for a in [AccumulationClass(out, frequency=frequency, **r) for r in requests]:

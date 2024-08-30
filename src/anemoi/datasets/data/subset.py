@@ -9,7 +9,6 @@ import logging
 from functools import cached_property
 
 import numpy as np
-from anemoi.utils.dates import frequency_to_timedelta
 
 from .debug import Node
 from .debug import Source
@@ -90,7 +89,8 @@ class Subset(Forwards):
     @cached_property
     def frequency(self):
         dates = self.dates
-        return frequency_to_timedelta(dates[1].astype(object) - dates[0].astype(object))
+        delta = dates[1].astype(object) - dates[0].astype(object)
+        return int(delta.total_seconds() / 3600)
 
     def source(self, index):
         return Source(self, index, self.forward.source(index))

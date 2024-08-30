@@ -9,7 +9,7 @@
 import itertools
 
 from anemoi.datasets.dates import Dates
-from anemoi.datasets.dates import as_datetime
+from anemoi.datasets.dates import no_time_zone
 
 
 class Groups:
@@ -67,7 +67,7 @@ class Groups:
 
 class Filter:
     def __init__(self, missing):
-        self.missing = [as_datetime(m) for m in missing]
+        self.missing = [no_time_zone(m) for m in missing]
 
     def __call__(self, dates):
         return [d for d in dates if d not in self.missing]

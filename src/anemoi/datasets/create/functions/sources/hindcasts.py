@@ -7,14 +7,18 @@
 # nor does it submit to any jurisdiction.
 #
 import datetime
-import logging
-
-from earthkit.data.core.fieldlist import MultiFieldList
 
 from anemoi.datasets.create.functions.sources.mars import mars
 
-LOGGER = logging.getLogger(__name__)
 DEBUG = True
+
+
+def _member(field):
+    # Bug in eccodes has number=0 randomly
+    number = field.metadata("number")
+    if number is None:
+        number = 0
+    return number
 
 
 def _to_list(x):
@@ -59,19 +63,9 @@ class HindcastCompute:
 def use_reference_year(reference_year, request):
     request = request.copy()
     hdate = request.pop("date")
-
-    if hdate.year >= reference_year:
-        return None, False
-
-    try:
-        date = datetime.datetime(reference_year, hdate.month, hdate.day)
-    except ValueError:
-        if hdate.month == 2 and hdate.day == 29:
-            return None, False
-        raise
-
+    date = datetime.datetime(reference_year, hdate.month, hdate.day)
     request.update(date=date.strftime("%Y-%m-%d"), hdate=hdate.strftime("%Y-%m-%d"))
-    return request, True
+    return request
 
 
 def hindcasts(context, dates, **request):
@@ -95,18 +89,9 @@ def hindcasts(context, dates, **request):
     requests = []
     for d in dates:
         req = c.compute_hindcast(d)
-        req, ok = use_reference_year(reference_year, req)
-        if ok:
-            requests.append(req)
+        req = use_reference_year(reference_year, req)
 
-    # print("HINDCASTS requests", reference_year, base_times, available_steps)
-    # print("HINDCASTS dates", compress_dates(dates))
-
-    if len(requests) == 0:
-        # print("HINDCASTS no requests")
-        return MultiFieldList([])
-
-    # print("HINDCASTS requests", requests)
+        requests.append(req)
 
     return mars(
         context,

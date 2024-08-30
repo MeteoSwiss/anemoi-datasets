@@ -7,7 +7,6 @@
 # nor does it submit to any jurisdiction.
 #
 
-import datetime
 import os
 from contextlib import contextmanager
 
@@ -62,10 +61,10 @@ def make_list_int(value):
 
 
 def normalize_and_check_dates(dates, start, end, frequency, dtype="datetime64[s]"):
-    assert isinstance(frequency, datetime.timedelta), frequency
+    assert isinstance(frequency, int), frequency
     start = np.datetime64(start)
     end = np.datetime64(end)
-    delta = np.timedelta64(frequency)
+    delta = np.timedelta64(frequency, "h")
 
     res = []
     while start <= end:

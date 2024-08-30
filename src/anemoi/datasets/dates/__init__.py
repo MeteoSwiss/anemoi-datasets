@@ -9,31 +9,25 @@
 import datetime
 import warnings
 
-# from anemoi.utils.dates import as_datetime
-from anemoi.utils.dates import as_datetime
-from anemoi.utils.dates import frequency_to_timedelta
-from anemoi.utils.humanize import print_dates
+
+def no_time_zone(date):
+    return date.replace(tzinfo=None)
 
 
-def extend(x):
+def frequency_to_hours(frequency):
+    if isinstance(frequency, int):
+        return frequency
+    assert isinstance(frequency, str), (type(frequency), frequency)
 
-    if isinstance(x, (list, tuple)):
-        for y in x:
-            yield from extend(y)
-        return
+    unit = frequency[-1].lower()
+    v = int(frequency[:-1])
+    return {"h": v, "d": v * 24}[unit]
 
+
+def normalize_date(x):
     if isinstance(x, str):
-        if "/" in x:
-            start, end, step = x.split("/")
-            start = as_datetime(start)
-            end = as_datetime(end)
-            step = frequency_to_timedelta(step)
-            while start <= end:
-                yield start
-                start += datetime.timedelta(hours=step)
-            return
-
-    yield as_datetime(x)
+        return no_time_zone(datetime.datetime.fromisoformat(x))
+    return x
 
 
 class Dates:
@@ -65,7 +59,7 @@ class Dates:
     def __init__(self, missing=None):
         if not missing:
             missing = []
-        self.missing = list(extend(missing))
+        self.missing = [normalize_date(x) for x in missing]
         if set(self.missing) - set(self.values):
             warnings.warn(f"Missing dates {self.missing} not in list.")
 
@@ -91,7 +85,7 @@ class Dates:
 
 class ValuesDates(Dates):
     def __init__(self, values, **kwargs):
-        self.values = sorted([as_datetime(_) for _ in values])
+        self.values = sorted([no_time_zone(_) for _ in values])
         super().__init__(**kwargs)
 
     def __repr__(self):
@@ -103,8 +97,7 @@ class ValuesDates(Dates):
 
 class StartEndDates(Dates):
     def __init__(self, start, end, frequency=1, months=None, **kwargs):
-        frequency = frequency_to_timedelta(frequency)
-        assert isinstance(frequency, datetime.timedelta), frequency
+        frequency = frequency_to_hours(frequency)
 
         def _(x):
             if isinstance(x, str):
@@ -120,13 +113,13 @@ class StartEndDates(Dates):
         if isinstance(end, datetime.date) and not isinstance(end, datetime.datetime):
             end = datetime.datetime(end.year, end.month, end.day)
 
-        start = as_datetime(start)
-        end = as_datetime(end)
+        start = no_time_zone(start)
+        end = no_time_zone(end)
 
         # if end <= start:
         #     raise ValueError(f"End date {end} must be after start date {start}")
 
-        increment = frequency
+        increment = datetime.timedelta(hours=frequency)
 
         self.start = start
         self.end = end
@@ -152,9 +145,3 @@ class StartEndDates(Dates):
             "end": self.end.isoformat(),
             "frequency": f"{self.frequency}h",
         }
-
-
-if __name__ == "__main__":
-    print_dates([datetime.datetime(2023, 1, 1, 0, 0)])
-    s = StartEndDates(start="2023-01-01 00:00", end="2023-01-02 00:00", frequency=1)
-    print_dates(list(s))
