@@ -236,6 +236,8 @@ class MultiEncCutout(GridsBase):
         )
 
         self.lam_index = np.sum(self.mask)
+        self.lam_shape = lam.shape[1]
+        self.global_shape = globe.shape[1]
 
 
     def check_compatibility(self, d1, d2):
