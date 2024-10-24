@@ -10,9 +10,21 @@ Keep it human-readable, your future self will thank you!
 
 ## [Unreleased](https://github.com/ecmwf/anemoi-datasets/compare/0.5.7...HEAD)
 
+### Changed
+
+- Bugfix in `auto_adjust`
+
 ### Added
 
 - Add anemoi-transform link to documentation
+- Various bug fixes
+- Control compatibility check in xy/zip
+- Add `merge` feature
+
+### Changed
+
+- Remove upstream dependencies from downstream-ci workflow (temporary) (#83)
+- ci: pin python versions to 3.9 ... 3.12 for checks (#93)
 
 ## [0.5.7](https://github.com/ecmwf/anemoi-datasets/compare/0.5.6...0.5.7) - 2024-10-09
 
@@ -26,6 +38,10 @@ Keep it human-readable, your future self will thank you!
 
 - Add `variables_metadata` entry in the dataset metadata
 - Update documentation
+
+### Changed
+
+- Add `variables_metadata` entry in the dataset metadata
 
 ### Changed
 
