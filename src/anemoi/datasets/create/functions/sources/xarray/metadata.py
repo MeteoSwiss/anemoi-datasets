@@ -1,11 +1,12 @@
-# (C) Copyright 2024 ECMWF.
+# (C) Copyright 2024 Anemoi contributors.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-#
+
 
 import logging
 from functools import cached_property
@@ -32,7 +33,12 @@ class MDMapping:
         return len(self.user_to_internal)
 
     def __repr__(self):
-        return f"MDMapping({self.user_to_internal})"
+        return f"MDMapping({self.mapping})"
+
+    def fill_time_metadata(self, field, md):
+        valid_datetime = self.variable.time.fill_time_metadata(field._md, md)
+        if valid_datetime is not None:
+            md["valid_datetime"] = as_datetime(valid_datetime).isoformat()
 
 
 class XArrayMetadata(RawMetadata):
@@ -74,15 +80,7 @@ class XArrayMetadata(RawMetadata):
             return self._as_mars()
 
     def _as_mars(self):
-        return dict(
-            param=self["variable"],
-            step=self["step"],
-            levelist=self["level"],
-            levtype=self["levtype"],
-            number=self["number"],
-            date=self["date"],
-            time=self["time"],
-        )
+        return {}
 
     def _base_datetime(self):
         return self._field.forecast_reference_time
@@ -137,12 +135,12 @@ class XArrayFieldGeography(Geography):
         # TODO: implement resolution
         return None
 
-    @property
+    # @property
     def mars_grid(self):
         # TODO: implement mars_grid
         return None
 
-    @property
+    # @property
     def mars_area(self):
         # TODO: code me
         # return [self.north, self.west, self.south, self.east]

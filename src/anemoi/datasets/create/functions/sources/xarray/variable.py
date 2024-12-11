@@ -1,20 +1,18 @@
-# (C) Copyright 2024 ECMWF.
+# (C) Copyright 2024 Anemoi contributors.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-#
+
 
 import logging
 import math
 from functools import cached_property
 
 import numpy as np
-from earthkit.data.utils.array import ensure_backend
-
-from anemoi.datasets.create.functions.sources.xarray.metadata import MDMapping
 
 from .field import XArrayField
 
@@ -22,9 +20,18 @@ LOG = logging.getLogger(__name__)
 
 
 class Variable:
-    def __init__(self, *, ds, var, coordinates, grid, time, metadata, mapping=None, array_backend=None):
+    def __init__(
+        self,
+        *,
+        ds,
+        variable,
+        coordinates,
+        grid,
+        time,
+        metadata,
+    ):
         self.ds = ds
-        self.var = var
+        self.variable = variable
 
         self.grid = grid
         self.coordinates = coordinates
@@ -34,13 +41,7 @@ class Variable:
         #     print(" ", c)
 
         self._metadata = metadata.copy()
-        # self._metadata.update(var.attrs)
-        self._metadata.update({"variable": var.name})
-
-        # self._metadata.setdefault("level", None)
-        # self._metadata.setdefault("number", 0)
-        # self._metadata.setdefault("levtype", "sfc")
-        self._mapping = mapping
+        self._metadata.update({"variable": variable.name})
 
         self.time = time
 
@@ -49,41 +50,24 @@ class Variable:
         self.by_name = {c.variable.name: c for c in coordinates}
 
         self.length = math.prod(self.shape)
-        self.array_backend = ensure_backend(array_backend)
 
-    def update_metadata_mapping(self, kwargs):
-
-        result = {}
-
-        for k, v in kwargs.items():
-            if k == "param":
-                result[k] = "variable"
-                continue
-
-            for c in self.coordinates:
-                if k in c.mars_names:
-                    for v in c.mars_names:
-                        result[v] = c.variable.name
-                    break
-
-        self._mapping = MDMapping(result)
 
     @property
     def name(self):
-        return self.var.name
+        return self.variable.name
 
     def __len__(self):
         return self.length
 
     @property
     def grid_mapping(self):
-        grid_mapping = self.var.attrs.get("grid_mapping", None)
+        grid_mapping = self.variable.attrs.get("grid_mapping", None)
         if grid_mapping is None:
             return None
         return self.ds[grid_mapping].attrs
 
     def grid_points(self):
-        return self.grid.grid_points()
+        return self.grid.grid_points
 
     @property
     def latitudes(self):
@@ -95,25 +79,20 @@ class Variable:
 
     def __repr__(self):
         return "Variable[name=%s,coordinates=%s,metadata=%s]" % (
-            self.var.name,
+            self.variable.name,
             self.coordinates,
             self._metadata,
         )
 
     def __getitem__(self, i):
-        """
-        Get a 2D field from the variable
-        """
+        """Get a 2D field from the variable"""
+
         if i >= self.length:
             raise IndexError(i)
 
         coords = np.unravel_index(i, self.shape)
         kwargs = {k: v for k, v in zip(self.names, coords)}
-        return XArrayField(self, self.var.isel(kwargs))
-
-    @property
-    def mapping(self):
-        return self._mapping
+        return XArrayField(self, self.variable.isel(kwargs))
 
     def sel(self, missing, **kwargs):
 
@@ -142,7 +121,7 @@ class Variable:
 
         variable = Variable(
             ds=self.ds,
-            var=self.var.isel({k: i}),
+            variable=self.variable.isel({k: i}),
             coordinates=coordinates,
             grid=self.grid,
             time=self.time,
@@ -159,7 +138,7 @@ class Variable:
             name = kwargs.pop("variable")
             if not isinstance(name, (list, tuple)):
                 name = [name]
-            if self.var.name not in name:
+            if self.variable.name not in name:
                 return False, None
             return True, kwargs
         return True, kwargs

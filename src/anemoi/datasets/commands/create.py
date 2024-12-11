@@ -1,3 +1,12 @@
+# (C) Copyright 2024 Anemoi contributors.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
 import datetime
 import logging
 import time
@@ -8,30 +17,25 @@ from concurrent.futures import as_completed
 import tqdm
 from anemoi.utils.humanize import seconds_to_human
 
-from anemoi.datasets.create.trace import enable_trace
-
 from . import Command
 
 LOG = logging.getLogger(__name__)
 
 
 def task(what, options, *args, **kwargs):
-    """
-    Make sure `import Creator` is done in the sub-processes, and not in the main one.
-    """
+    """Make sure `import Creator` is done in the sub-processes, and not in the main one."""
 
     now = datetime.datetime.now()
-    LOG.debug(f"Task {what}({args},{kwargs}) starting")
+    LOG.info(f"🎬 Task {what}({args},{kwargs}) starting")
 
-    from anemoi.datasets.create import Creator
+    from anemoi.datasets.create import creator_factory
 
-    if "trace" in options:
-        enable_trace(options["trace"])
+    options = {k: v for k, v in options.items() if v is not None}
 
-    c = Creator(**options)
-    result = getattr(c, what)(*args, **kwargs)
+    c = creator_factory(what.replace("-", "_"), **options)
+    result = c.run()
 
-    LOG.debug(f"Task {what}({args},{kwargs}) completed ({datetime.datetime.now()-now})")
+    LOG.info(f"🏁 Task {what}({args},{kwargs}) completed ({datetime.datetime.now()-now})")
     return result
 
 
@@ -60,6 +64,7 @@ class Create(Command):
         command_parser.add_argument("--trace", action="store_true")
 
     def run(self, args):
+
         now = time.time()
         if args.threads + args.processes:
             self.parallel_create(args)
@@ -68,11 +73,23 @@ class Create(Command):
         LOG.info(f"Create completed in {seconds_to_human(time.time()-now)}")
 
     def serial_create(self, args):
-        from anemoi.datasets.create import Creator
 
         options = vars(args)
-        c = Creator(**options)
-        c.create()
+        options.pop("command")
+        options.pop("threads")
+        options.pop("processes")
+
+        task("init", options)
+        task("load", options)
+        task("finalise", options)
+
+        task("patch", options)
+
+        task("init_additions", options)
+        task("run_additions", options)
+        task("finalise_additions", options)
+        task("cleanup", options)
+        task("verify", options)
 
     def parallel_create(self, args):
         """Some modules, like fsspec do not work well with fork()
@@ -82,10 +99,15 @@ class Create(Command):
         """
 
         options = vars(args)
-        parallel = args.threads + args.processes
-        args.use_threads = args.threads > 0
+        options.pop("command")
 
-        if args.use_threads:
+        threads = options.pop("threads")
+        processes = options.pop("processes")
+
+        use_threads = threads > 0
+        options["use_threads"] = use_threads
+
+        if use_threads:
             ExecutorClass = ThreadPoolExecutor
         else:
             ExecutorClass = ProcessPoolExecutor
@@ -95,9 +117,12 @@ class Create(Command):
 
         futures = []
 
+        parallel = threads + processes
         with ExecutorClass(max_workers=parallel) as executor:
             for n in range(total):
-                futures.append(executor.submit(task, "load", options, parts=f"{n+1}/{total}"))
+                opt = options.copy()
+                opt["parts"] = f"{n+1}/{total}"
+                futures.append(executor.submit(task, "load", opt))
 
             for future in tqdm.tqdm(
                 as_completed(futures), desc="Loading", total=len(futures), colour="green", position=parallel + 1
@@ -105,8 +130,29 @@ class Create(Command):
                 future.result()
 
         with ExecutorClass(max_workers=1) as executor:
-            executor.submit(task, "statistics", options).result()
-            executor.submit(task, "additions", options).result()
+            executor.submit(task, "finalise", options).result()
+
+        with ExecutorClass(max_workers=1) as executor:
+            executor.submit(task, "init-additions", options).result()
+
+        with ExecutorClass(max_workers=parallel) as executor:
+            opt = options.copy()
+            opt["parts"] = f"{n+1}/{total}"
+            futures.append(executor.submit(task, "load", opt))
+            for n in range(total):
+                futures.append(executor.submit(task, "load-additions", opt))
+
+            for future in tqdm.tqdm(
+                as_completed(futures),
+                desc="Computing additions",
+                total=len(futures),
+                colour="green",
+                position=parallel + 1,
+            ):
+                future.result()
+
+        with ExecutorClass(max_workers=1) as executor:
+            executor.submit(task, "finalise-additions", options).result()
             executor.submit(task, "cleanup", options).result()
             executor.submit(task, "verify", options).result()
 

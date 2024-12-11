@@ -1,11 +1,12 @@
-# (C) Copyright 2024 ECMWF.
+# (C) Copyright 2024 Anemoi contributors.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-#
+
 
 import json
 import logging
@@ -13,10 +14,8 @@ import logging
 import yaml
 from earthkit.data.core.fieldlist import FieldList
 
-from .coordinates import is_scalar as is_scalar
 from .field import EmptyFieldList
 from .flavour import CoordinateGuesser
-from .metadata import XArrayMetadata as XArrayMetadata
 from .time import Time
 from .variable import FilteredVariable
 from .variable import Variable
@@ -60,6 +59,15 @@ class XarrayFieldList(FieldList):
                 else:
                     flavour = json.load(f)
 
+        if isinstance(flavour, dict):
+            flavour_coords = [coords["name"] for coords in flavour["rules"].values()]
+            ds_dims = [dim for dim in ds._dims]
+            for dim in ds_dims:
+                if dim in flavour_coords and dim not in ds._coord_names:
+                    ds = ds.assign_coords({dim: ds[dim]})
+                else:
+                    pass
+
         guess = CoordinateGuesser.from_flavour(ds, flavour)
 
         skip = set()
@@ -70,10 +78,10 @@ class XarrayFieldList(FieldList):
                 skip.update(attr_val.split(" "))
 
         for name in ds.data_vars:
-            v = ds[name]
-            _skip_attr(v, "coordinates")
-            _skip_attr(v, "bounds")
-            _skip_attr(v, "grid_mapping")
+            variable = ds[name]
+            _skip_attr(variable, "coordinates")
+            _skip_attr(variable, "bounds")
+            _skip_attr(variable, "grid_mapping")
 
         # Select only geographical variables
         for name in ds.data_vars:
@@ -81,14 +89,14 @@ class XarrayFieldList(FieldList):
             if name in skip:
                 continue
 
-            v = ds[name]
+            variable = ds[name]
             coordinates = []
 
-            for coord in v.coords:
+            for coord in variable.coords:
 
                 c = guess.guess(ds[coord], coord)
                 assert c, f"Could not guess coordinate for {coord}"
-                if coord not in v.dims:
+                if coord not in variable.dims:
                     c.is_dim = False
                 coordinates.append(c)
 
@@ -98,16 +106,16 @@ class XarrayFieldList(FieldList):
             if grid_coords < 2:
                 continue
 
-            variables.append(
-                Variable(
-                    ds=ds,
-                    var=v,
-                    coordinates=coordinates,
-                    grid=guess.grid(coordinates),
-                    time=Time.from_coordinates(coordinates),
-                    metadata={},
-                )
+            v = Variable(
+                ds=ds,
+                variable=variable,
+                coordinates=coordinates,
+                grid=guess.grid(coordinates, variable),
+                time=Time.from_coordinates(coordinates),
+                metadata={},
             )
+
+            variables.append(v)
 
         return cls(ds, variables)
 

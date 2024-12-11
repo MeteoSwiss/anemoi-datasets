@@ -1,11 +1,12 @@
-# (C) Copyright 2024 ECMWF.
+# (C) Copyright 2024 Anemoi contributors.
 #
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
-#
+
 import datetime
 import glob
 import hashlib
@@ -79,6 +80,37 @@ def to_datetimes(dates):
     return [to_datetime(d) for d in dates]
 
 
+def fix_variance(x, name, count, sums, squares):
+    assert count.shape == sums.shape == squares.shape
+    assert isinstance(x, float)
+
+    mean = sums / count
+    assert mean.shape == count.shape
+
+    if x >= 0:
+        return x
+
+    LOG.warning(f"Negative variance for {name=}, variance={x}")
+    magnitude = np.sqrt((squares / count + mean * mean) / 2)
+    LOG.warning(f"square / count - mean * mean =  {squares/count} - {mean*mean} = {squares/count - mean*mean}")
+    LOG.warning(f"Variable span order of magnitude is {magnitude}.")
+    LOG.warning(f"Count is {count}.")
+
+    variances = squares / count - mean * mean
+    assert variances.shape == squares.shape == mean.shape
+    if np.all(variances >= 0):
+        LOG.warning(f"All individual variances for {name} are positive, setting variance to 0.")
+        return 0
+
+    # if abs(x) < magnitude * 1e-6 and abs(x) < range * 1e-6:
+    #     LOG.warning("Variance is negative but very small.")
+    #     variances = squares / count - mean * mean
+    #     return 0
+
+    LOG.warning(f"ERROR at least one individual variance is negative ({np.nanmin(variances)}).")
+    return 0
+
+
 def check_variance(x, variables_names, minimum, maximum, mean, count, sums, squares):
     if (x >= 0).all():
         return
@@ -124,7 +156,7 @@ def compute_statistics(array, check_variables_names=None, allow_nans=False):
             check_data_values(values[j, :], name=name, allow_nans=allow_nans)
             if np.isnan(values[j, :]).all():
                 # LOG.warning(f"All NaN values for {name} ({j}) for date {i}")
-                raise ValueError(f"All NaN values for {name} ({j}) for date {i}")
+                LOG.warning(f"All NaN values for {name} ({j}) for date {i}")
 
         # Ignore NaN values
         minimum[i] = np.nanmin(values, axis=1)
@@ -156,8 +188,11 @@ class TmpStatistics:
 
     def add_provenance(self, **kwargs):
         self.create(exist_ok=True)
+        path = os.path.join(self.dirname, "provenance.json")
+        if os.path.exists(path):
+            return
         out = dict(provenance=gather_provenance_info(), **kwargs)
-        with open(os.path.join(self.dirname, "provenance.json"), "w") as f:
+        with open(path, "w") as f:
             json.dump(out, f)
 
     def create(self, exist_ok):

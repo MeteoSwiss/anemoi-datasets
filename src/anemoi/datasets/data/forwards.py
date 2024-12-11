@@ -1,11 +1,15 @@
-# (C) Copyright 2024 European Centre for Medium-Range Weather Forecasts.
+# (C) Copyright 2024 Anemoi contributors.
+#
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+
 import logging
+import warnings
 from functools import cached_property
 
 import numpy as np
@@ -23,13 +27,19 @@ LOG = logging.getLogger(__name__)
 
 class Forwards(Dataset):
     def __init__(self, forward):
-        self.forward = forward
+        self.forward = forward.mutate()
 
     def __len__(self):
         return len(self.forward)
 
     def __getitem__(self, n):
         return self.forward[n]
+
+    @property
+    def name(self):
+        if self._name is not None:
+            return self._name
+        return self.forward.name
 
     @property
     def dates(self):
@@ -64,6 +74,10 @@ class Forwards(Dataset):
         return self.forward.variables
 
     @property
+    def variables_metadata(self):
+        return self.forward.variables_metadata
+
+    @property
     def statistics(self):
         return self.forward.statistics
 
@@ -95,6 +109,12 @@ class Forwards(Dataset):
             **kwargs,
         )
 
+    def collect_supporting_arrays(self, collected, *path):
+        self.forward.collect_supporting_arrays(collected, *path)
+
+    def collect_input_sources(self, collected):
+        self.forward.collect_input_sources(collected)
+
     def source(self, index):
         return self.forward.source(index)
 
@@ -117,6 +137,9 @@ class Combined(Forwards):
 
         # Forward most properties to the first dataset
         super().__init__(datasets[0])
+
+    def mutate(self):
+        return self
 
     def check_same_resolution(self, d1, d2):
         if d1.resolution != d2.resolution:
@@ -187,14 +210,15 @@ class Combined(Forwards):
             **kwargs,
         )
 
-    @cached_property
+    def collect_supporting_arrays(self, collected, *path):
+        warnings.warn(f"The behaviour of {self.__class__.__name__}.collect_supporting_arrays() is not well defined")
+        for i, d in enumerate(self.datasets):
+            name = d.name if d.name is not None else i
+            d.collect_supporting_arrays(collected, *path, name)
+
+    @property
     def missing(self):
-        offset = 0
-        result = set()
-        for d in self.datasets:
-            result.update(offset + m for m in d.missing)
-            offset += len(d)
-        return result
+        raise NotImplementedError("missing() not implemented for Combined")
 
     def get_dataset_names(self, names):
         for d in self.datasets:
@@ -253,3 +277,13 @@ class GivenAxis(Combined):
             return self._get_slice(n)
 
         return np.concatenate([d[n] for d in self.datasets], axis=self.axis - 1)
+
+    @cached_property
+    def missing(self):
+        offset = 0
+        result = set()
+        for d in self.datasets:
+            result.update(offset + m for m in d.missing)
+            if self.axis == 0:  # Advance if axis is time
+                offset += len(d)
+        return result

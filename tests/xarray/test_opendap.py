@@ -1,12 +1,16 @@
-# (C) Copyright 2024 European Centre for Medium-Range Weather Forecasts.
+# (C) Copyright 2024 Anemoi contributors.
+#
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
+
 import xarray as xr
 
 from anemoi.datasets.create.functions.sources.xarray import XarrayFieldList
+from anemoi.datasets.testing import assert_field_list
 
 
 def test_opendap():
@@ -16,8 +20,7 @@ def test_opendap():
     )
 
     fs = XarrayFieldList.from_xarray(ds)
-
-    assert len(fs) == 79529
+    assert_field_list(fs, 79529, "2023-01-01T00:00:00", "2023-01-03T18:00:00")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,12 @@
-# (C) Copyright 2024 European Centre for Medium-Range Weather Forecasts.
+# (C) Copyright 2024 Anemoi contributors.
+#
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
+
 
 import logging
 from functools import cached_property
@@ -93,6 +96,11 @@ class Unchecked(Combined):
 
     @property
     @check("check_same_variables")
+    def variables_metadata(self):
+        raise NotImplementedError()
+
+    @property
+    @check("check_same_variables")
     def statistics(self):
         raise NotImplementedError()
 
@@ -104,22 +112,29 @@ class Unchecked(Combined):
     def shape(self):
         raise NotImplementedError()
 
-    @property
-    def dtype(self):
-        raise NotImplementedError()
+    # @property
+    # def field_shape(self):
+    #     return tuple(d.shape for d in self.datasets)
 
-    @property
-    def grids(self):
-        raise NotImplementedError()
+    # @property
+    # def latitudes(self):
+    #     return tuple(d.latitudes for d in self.datasets)
 
+    # @property
+    # def longitudes(self):
+    #     return tuple(d.longitudes for d in self.datasets)
 
-class Zip(Unchecked):
+    # @property
+    # def statistics(self):
+    #     return tuple(d.statistics for d in self.datasets)
 
-    def __len__(self):
-        return min(len(d) for d in self.datasets)
+    # @property
+    # def resolution(self):
+    #     return tuple(d.resolution for d in self.datasets)
 
-    def __getitem__(self, n):
-        return tuple(d[n] for d in self.datasets)
+    # @property
+    # def name_to_index(self):
+    #     return tuple(d.name_to_index for d in self.datasets)
 
     @cached_property
     def missing(self):
@@ -142,17 +157,8 @@ class Chain(ConcatMixin, Unchecked):
     def dates(self):
         raise NotImplementedError()
 
-
-def zip_factory(args, kwargs):
-
-    zip = kwargs.pop("zip")
-    assert len(args) == 0
-    assert isinstance(zip, (list, tuple))
-
-    datasets = [_open(e) for e in zip]
-    datasets, kwargs = _auto_adjust(datasets, kwargs)
-
-    return Zip(datasets)._subset(**kwargs)
+    def dataset_metadata(self):
+        return {"multiple": [d.dataset_metadata() for d in self.datasets]}
 
 
 def chain_factory(args, kwargs):

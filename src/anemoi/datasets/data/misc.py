@@ -1,9 +1,12 @@
-# (C) Copyright 2024 European Centre for Medium-Range Weather Forecasts.
+# (C) Copyright 2024 Anemoi contributors.
+#
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
+
 
 import calendar
 import datetime
@@ -43,26 +46,21 @@ def add_dataset_path(path):
         config["datasets"]["path"].append(path)
 
 
-def _frequency_to_hours(frequency):
-    if isinstance(frequency, int):
-        return frequency
+def round_datetime(d, dates, up):
+    """Round up (or down) a datetime to the nearest date in a list of dates"""
+    if dates is None or len(dates) == 0:
+        return d
 
-    if isinstance(frequency, float):
-        assert int(frequency) == frequency
-        return int(frequency)
-
-    m = re.match(r"(\d+)([dh])?", frequency)
-    if m is None:
-        raise ValueError("Invalid frequency: " + frequency)
-
-    frequency = int(m.group(1))
-    if m.group(2) == "h":
-        return frequency
-
-    if m.group(2) == "d":
-        return frequency * 24
-
-    raise NotImplementedError()
+    for i, date in enumerate(dates):
+        if date == d:
+            return date
+        if date > d:
+            if up:
+                return date
+            if i > 0:
+                return dates[i - 1]
+            return date
+    return dates[-1]
 
 
 def _as_date(d, dates, last):
@@ -71,7 +69,8 @@ def _as_date(d, dates, last):
     # so we need to check for datetime.datetime first
 
     if isinstance(d, (np.datetime64, datetime.datetime)):
-        return d
+        d = round_datetime(d, dates, up=not last)
+        return np.datetime64(d)
 
     if isinstance(d, datetime.date):
         d = d.year * 10_000 + d.month * 100 + d.day
@@ -85,27 +84,27 @@ def _as_date(d, dates, last):
         if len(str(d)) == 4:
             year = d
             if last:
-                return np.datetime64(f"{year:04}-12-31T23:59:59")
+                return _as_date(np.datetime64(f"{year:04}-12-31T23:59:59"), dates, last)
             else:
-                return np.datetime64(f"{year:04}-01-01T00:00:00")
+                return _as_date(np.datetime64(f"{year:04}-01-01T00:00:00"), dates, last)
 
         if len(str(d)) == 6:
             year = d // 100
             month = d % 100
             if last:
                 _, last_day = calendar.monthrange(year, month)
-                return np.datetime64(f"{year:04}-{month:02}-{last_day:02}T23:59:59")
+                return _as_date(np.datetime64(f"{year:04}-{month:02}-{last_day:02}T23:59:59"), dates, last)
             else:
-                return np.datetime64(f"{year:04}-{month:02}-01T00:00:00")
+                return _as_date(np.datetime64(f"{year:04}-{month:02}-01T00:00:00"), dates, last)
 
         if len(str(d)) == 8:
             year = d // 10000
             month = (d % 10000) // 100
             day = d % 100
             if last:
-                return np.datetime64(f"{year:04}-{month:02}-{day:02}T23:59:59")
+                return _as_date(np.datetime64(f"{year:04}-{month:02}-{day:02}T23:59:59"), dates, last)
             else:
-                return np.datetime64(f"{year:04}-{month:02}-{day:02}T00:00:00")
+                return _as_date(np.datetime64(f"{year:04}-{month:02}-{day:02}T00:00:00"), dates, last)
 
     if isinstance(d, str):
 
@@ -113,7 +112,11 @@ def _as_date(d, dates, last):
             date, time = d.replace(" ", "T").split("T")
             year, month, day = [int(_) for _ in date.split("-")]
             hour, minute, second = [int(_) for _ in time.split(":")]
-            return np.datetime64(f"{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
+            return _as_date(
+                np.datetime64(f"{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}"),
+                dates,
+                last,
+            )
 
         if "-" in d:
             assert ":" not in d
@@ -125,11 +128,8 @@ def _as_date(d, dates, last):
                 return _as_date(int(bits[0]) * 100 + int(bits[1]), dates, last)
 
             if len(bits) == 3:
-                return _as_date(
-                    int(bits[0]) * 10000 + int(bits[1]) * 100 + int(bits[2]),
-                    dates,
-                    last,
-                )
+                return _as_date(int(bits[0]) * 10000 + int(bits[1]) * 100 + int(bits[2]), dates, last)
+
         if ":" in d:
             assert len(d) == 5
             hour, minute = d.split(":")
@@ -140,7 +140,7 @@ def _as_date(d, dates, last):
             month = first.month
             day = first.day
 
-            return np.datetime64(f"{year:04}-{month:02}-{day:02}T{hour}:00:00")
+            return _as_date(np.datetime64(f"{year:04}-{month:02}-{day:02}T{hour}:00:00"), dates, last)
 
     raise NotImplementedError(f"Unsupported date: {d} ({type(d)})")
 
@@ -167,27 +167,9 @@ def _concat_or_join(datasets, kwargs):
 
         return Join(datasets)._overlay(), kwargs
 
-    # Make sure the dates are disjoint
-    for i in range(len(ranges)):
-        r = ranges[i]
-        for j in range(i + 1, len(ranges)):
-            s = ranges[j]
-            if r[0] <= s[0] <= r[1] or r[0] <= s[1] <= r[1]:
-                raise ValueError(f"Overlapping dates: {r} and {s} ({datasets[i]} {datasets[j]})")
-
-    # For now we should have the datasets in order with no gaps
-
-    frequency = _frequency_to_hours(datasets[0].frequency)
-
-    for i in range(len(ranges) - 1):
-        r = ranges[i]
-        s = ranges[i + 1]
-        if r[1] + datetime.timedelta(hours=frequency) != s[0]:
-            raise ValueError(
-                "Datasets must be sorted by dates, with no gaps: " f"{r} and {s} ({datasets[i]} {datasets[i+1]})"
-            )
-
     from .concat import Concat
+
+    Concat.check_dataset_compatibility(datasets)
 
     return Concat(datasets), kwargs
 
@@ -197,7 +179,7 @@ def _open(a):
     from .stores import zarr_lookup
 
     if isinstance(a, Dataset):
-        return a
+        return a.mutate()
 
     if isinstance(a, zarr.hierarchy.Group):
         return Zarr(a).mutate()
@@ -206,13 +188,13 @@ def _open(a):
         return Zarr(zarr_lookup(a)).mutate()
 
     if isinstance(a, PurePath):
-        return _open(str(a))
+        return _open(str(a)).mutate()
 
     if isinstance(a, dict):
-        return _open_dataset(**a)
+        return _open_dataset(**a).mutate()
 
     if isinstance(a, (list, tuple)):
-        return _open_dataset(*a)
+        return _open_dataset(*a).mutate()
 
     raise NotImplementedError(f"Unsupported argument: {type(a)}")
 
@@ -257,16 +239,21 @@ def _auto_adjust(datasets, kwargs, aliases=ALIASES):
             if set(d.variables) != variables:
                 subset_kwargs[i]["select"] = sorted(variables)
 
+    if "start" or "end" in adjust_set:
+        common = datasets[0].dates
+        for d in datasets[0:]:
+            common = np.intersect1d(common, d.dates)
+
     if "start" in adjust_set:
         assert "start" not in kwargs, "Cannot use 'start' in adjust and kwargs"
-        start = max(d.dates[0] for d in datasets).astype(object)
+        start = min(common).astype(object)
         for i, d in enumerate(datasets):
             if start != d.dates[0]:
                 subset_kwargs[i]["start"] = start
 
     if "end" in adjust_set:
         assert "end" not in kwargs, "Cannot use 'end' in adjust and kwargs"
-        end = min(d.dates[-1] for d in datasets).astype(object)
+        end = max(common).astype(object)
         for i, d in enumerate(datasets):
             if end != d.dates[-1]:
                 subset_kwargs[i]["end"] = end
@@ -289,41 +276,59 @@ def _open_dataset(*args, **kwargs):
     for a in args:
         sets.append(_open(a))
 
-    if "zip" in kwargs:
-        from .unchecked import zip_factory
+    if "xy" in kwargs:
+        from .xy import xy_factory
 
         assert not sets, sets
-        return zip_factory(args, kwargs)
+        return xy_factory(args, kwargs).mutate()
+
+    if "x" in kwargs and "y" in kwargs:
+        from .xy import xy_factory
+
+        assert not sets, sets
+        return xy_factory(args, kwargs).mutate()
+
+    if "zip" in kwargs:
+        from .xy import zip_factory
+
+        assert not sets, sets
+        return zip_factory(args, kwargs).mutate()
 
     if "chain" in kwargs:
         from .unchecked import chain_factory
 
         assert not sets, sets
-        return chain_factory(args, kwargs)
+        return chain_factory(args, kwargs).mutate()
 
     if "join" in kwargs:
         from .join import join_factory
 
         assert not sets, sets
-        return join_factory(args, kwargs)
+        return join_factory(args, kwargs).mutate()
 
     if "concat" in kwargs:
         from .concat import concat_factory
 
         assert not sets, sets
-        return concat_factory(args, kwargs)
+        return concat_factory(args, kwargs).mutate()
+
+    if "merge" in kwargs:
+        from .merge import merge_factory
+
+        assert not sets, sets
+        return merge_factory(args, kwargs).mutate()
 
     if "ensemble" in kwargs:
         from .ensemble import ensemble_factory
 
         assert not sets, sets
-        return ensemble_factory(args, kwargs)
+        return ensemble_factory(args, kwargs).mutate()
 
     if "grids" in kwargs:
         from .grids import grids_factory
 
         assert not sets, sets
-        return grids_factory(args, kwargs)
+        return grids_factory(args, kwargs).mutate()
 
     if "cutout" in kwargs:
         from .grids import cutout_factory
