@@ -32,15 +32,15 @@ def extend(x):
     if isinstance(x, str):
         if "/" in x:
             start, end, step = x.split("/")
-            start = normalize_date(start)
-            end = normalize_date(end)
-            step = frequency_to_hours(step)
+            start = as_datetime(start)
+            end = as_datetime(end)
+            step = frequency_to_timedelta(step)
             while start <= end:
                 yield start
                 start += step
             return
 
-    yield normalize_date(x)
+    yield as_datetime(x)
 
 
 class DatesProvider:
@@ -104,7 +104,7 @@ class DatesProvider:
 
 class ValuesDates(DatesProvider):
     def __init__(self, values, **kwargs):
-        self.values = sorted([no_time_zone(_) for _ in values])
+        self.values = sorted([as_datetime(_) for _ in values])
         super().__init__(**kwargs)
 
     def __repr__(self):

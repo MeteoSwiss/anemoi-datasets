@@ -12,6 +12,7 @@ import logging
 from functools import cached_property
 
 import numpy as np
+from anemoi.utils.dates import frequency_to_timedelta
 
 from .debug import Node
 from .debug import Source

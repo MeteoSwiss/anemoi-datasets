@@ -8,6 +8,7 @@
 # nor does it submit to any jurisdiction.
 
 
+import datetime
 import os
 import warnings
 from contextlib import contextmanager
@@ -80,7 +81,7 @@ def normalize_and_check_dates(dates, start, end, frequency, dtype="datetime64[s]
     assert isinstance(frequency, datetime.timedelta), frequency
     start = np.datetime64(start)
     end = np.datetime64(end)
-    delta = np.timedelta64(frequency, "h")
+    delta = np.timedelta64(frequency)
 
     res = []
     while start <= end:
