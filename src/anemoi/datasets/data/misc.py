@@ -202,7 +202,6 @@ def _open(a):
 def _auto_adjust(datasets, kwargs, aliases=ALIASES):
 
     if "adjust" not in kwargs:
-        print("here")
         return datasets, kwargs
 
     adjust_list = kwargs.pop("adjust")
@@ -334,12 +333,6 @@ def _open_dataset(*args, **kwargs):
 
         assert not sets, sets
         return cutout_factory(args, kwargs)
-
-    if "multienccutout" in kwargs:
-        from .grids import multienccutout_factory
-
-        assert not sets, sets
-        return multienccutout_factory(args, kwargs)
 
     for name in ("datasets", "dataset"):
         if name in kwargs:

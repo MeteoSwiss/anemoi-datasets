@@ -143,7 +143,7 @@ class Grids(GridsBase):
 
 
 class Cutout(GridsBase):
-    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None):
+    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None, same_variables=True):
         """Initializes a Cutout object for hierarchical management of Limited Area
         Models (LAMs) and a global dataset, handling overlapping regions.
 
@@ -158,6 +158,7 @@ class Cutout(GridsBase):
                 between grid points.
             plot (bool, optional): Flag to enable or disable visualization
                 plots.
+            same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
         """
         super().__init__(datasets, axis)
         assert len(datasets) >= 2, "CutoutGrids requires at least two datasets"
@@ -173,6 +174,7 @@ class Cutout(GridsBase):
         self.neighbours = neighbours
         self.min_distance_km = min_distance_km
         self.plot = plot
+        self.same_variables = same_variables
         self.masks = []  # To store the masks for each LAM dataset
         self.global_mask = np.ones(self.globe.shape[-1], dtype=bool)
 
@@ -331,6 +333,12 @@ class Cutout(GridsBase):
     def check_same_resolution(self, d1, d2):
         # Turned off because we are combining different resolutions
         pass
+    
+    def check_same_variables(self, d1, d2):
+        if self.same_variables:
+            super().check_same_variables(d1, d2)
+        else:
+            pass
 
     @property
     def grids(self):
@@ -390,121 +398,6 @@ class Cutout(GridsBase):
         return Node(self, [d.tree() for d in self.datasets])
 
 
-class MultiEncCutout(GridsBase):
-    def __init__(self, datasets, axis):
-        from anemoi.datasets.grids import cutout_mask
-
-        super().__init__(datasets, axis)
-        assert len(datasets) == 2, "CutoutGrids requires two datasets"
-        assert axis == [1, 3], "CutoutGrids requires axis=[1,2]"
-
-        # We assume that the LAM is the first dataset, and the global is the second
-        # Note: the second fields does not really need to be global
-
-        lam, globe = datasets
-
-        self.lam = lam
-        self.globe = globe
-
-        self.mask = cutout_mask(
-            self.lam.latitudes,
-            self.lam.longitudes,
-            self.globe.latitudes,
-            self.globe.longitudes,
-            # plot="cutout",
-        )
-        assert len(self.mask) == self.globe.shape[3], (
-            len(self.mask),
-            self.globe.shape[3],
-        )
-
-        self.lam_index = np.sum(self.mask)
-        self.lam_shape = lam.shape[1]
-        self.global_shape = globe.shape[1]
-
-    def check_compatibility(self, d1, d2):
-        super().check_compatibility(d1, d2)
-        # self.check_lam_has_more_variables(d1, d2)
-
-    @cached_property
-    def shape(self):
-        shape = self.lam.shape
-        # Number of non-zero masked values in the globe dataset
-        nb_globe = np.count_nonzero(self.mask)
-        return shape[:-1] + (shape[-1] + nb_globe,)
-
-    def check_lam_has_more_variables(self, d1, d2):
-        if d1.shape[1] < d2.shape[1]:
-            raise ValueError(
-                f"Incompatible shapes: {d1.shape} and {d2.shape} ({d1} {d2}), lam dataset has less features than global dataset,"
-            )
-
-    def check_same_resolution(self, d1, d2):
-        # Turned off because we are combining different resolutions
-        pass
-
-    def check_same_variables(self, d1, d2):
-        # Turned off because we are combining Model levels and Pressure levels
-        pass
-
-    @property
-    def latitudes(self):
-        return np.concatenate([self.lam.latitudes, self.globe.latitudes[self.mask]])
-
-    @property
-    def longitudes(self):
-        """Returns the concatenated longitudes of each LAM and the global dataset
-        after applying masks.
-
-        Returns:
-            np.ndarray: Concatenated longitude array for the masked datasets.
-        """
-        lam_longitudes = np.concatenate([lam.longitudes[mask] for lam, mask in zip(self.lams, self.masks)])
-
-        assert (
-            len(lam_longitudes) + len(self.globe.longitudes[self.global_mask]) == self.shape[-1]
-        ), "Mismatch in number of longitudes"
-
-        longitudes = np.concatenate([lam_longitudes, self.globe.longitudes[self.global_mask]])
-        return longitudes
-
-    def __getitem__(self, index):
-        if isinstance(index, (int, slice)):
-            index = (index, slice(None), slice(None), slice(None))
-        return self._get_tuple(index)
-
-    @debug_indexing
-    @expand_list_indexing
-    def _get_tuple(self, index):
-        assert self.axis >= len(index) or index[self.axis] == slice(
-            None
-        ), f"No support for selecting a subset of the 1D values {index} ({self.tree()})"
-        index, changes = index_to_slices(index, self.shape)
-
-        # In case index_to_slices has changed the last slice
-        index, _ = update_tuple(index, self.axis, slice(None))
-
-        lam_data = self.lam[index]
-        globe_data = self.globe[index]
-
-        globe_data = globe_data[:, :, :, self.mask]
-
-        result = np.concatenate([lam_data, globe_data], axis=self.axis)
-
-        return apply_index_to_slices_changes(result, changes)
-
-    @property
-    def grids(self):
-        for d in self.datasets:
-            if len(d.grids) > 1:
-                raise NotImplementedError("CutoutGrids does not support multi-grids datasets as inputs")
-        shape = self.lam.shape
-        return (shape[-1], self.shape[-1] - shape[-1])
-
-    def tree(self):
-        return Node(self, [d.tree() for d in self.datasets])
-
-
 def grids_factory(args, kwargs):
     if "ensemble" in kwargs:
         raise NotImplementedError("Cannot use both 'ensemble' and 'grids'")
@@ -531,6 +424,8 @@ def cutout_factory(args, kwargs):
     min_distance_km = kwargs.pop("min_distance_km", None)
     cropping_distance = kwargs.pop("cropping_distance", 2.0)
     neighbours = kwargs.pop("neighbours", 5)
+    same_variables = kwargs.pop("check_same_variables", True)
+    print("SAME VARIABLES: ", same_variables)
 
     assert len(args) == 0
     assert isinstance(cutout, (list, tuple)), "cutout must be a list or tuple"
@@ -545,4 +440,5 @@ def cutout_factory(args, kwargs):
         min_distance_km=min_distance_km,
         cropping_distance=cropping_distance,
         plot=plot,
+        same_variables=same_variables,
     )._subset(**kwargs)
