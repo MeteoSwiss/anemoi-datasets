@@ -11,7 +11,6 @@
 import calendar
 import datetime
 import logging
-import re
 from pathlib import PurePath
 
 import numpy as np
@@ -26,6 +25,7 @@ ALIASES = {
     "dates": ["start", "end", "frequency"],
     "variables": ["select"],
 }
+
 
 def load_config():
     return load_settings(defaults={"datasets": {"named": {}, "path": []}})
@@ -202,13 +202,12 @@ def _open(a):
 def _auto_adjust(datasets, kwargs, aliases=ALIASES):
 
     if "adjust" not in kwargs:
-        print('here')
+        print("here")
         return datasets, kwargs
 
     adjust_list = kwargs.pop("adjust")
     if not isinstance(adjust_list, (tuple, list)):
         adjust_list = [adjust_list]
-
 
     adjust_set = set()
 
@@ -335,7 +334,7 @@ def _open_dataset(*args, **kwargs):
 
         assert not sets, sets
         return cutout_factory(args, kwargs)
-    
+
     if "multienccutout" in kwargs:
         from .grids import multienccutout_factory
 

@@ -233,7 +233,7 @@ class GivenAxis(Combined):
             self.axis = [axis]
         else:
             self.axis = axis
-            
+
         super().__init__(datasets)
 
         assert axis[-1] > 0 and axis[-1] < len(self.datasets[0].shape), (

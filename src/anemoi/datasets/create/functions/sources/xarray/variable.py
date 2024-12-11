@@ -51,7 +51,6 @@ class Variable:
 
         self.length = math.prod(self.shape)
 
-
     @property
     def name(self):
         return self.variable.name

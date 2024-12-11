@@ -11,8 +11,6 @@
 import datetime
 import logging
 
-from anemoi.utils.dates import as_datetime
-
 LOG = logging.getLogger(__name__)
 
 

@@ -16,7 +16,6 @@ import warnings
 from functools import cached_property
 
 import numpy as np
-from anemoi.utils.dates import frequency_to_seconds
 from anemoi.utils.dates import frequency_to_string
 from anemoi.utils.dates import frequency_to_timedelta
 
@@ -277,7 +276,7 @@ class Dataset:
         shape = self.shape
         shape = list(shape)
         for i, a in enumerate(drop_axis):
-            shape.pop(a-i)
+            shape.pop(a - i)
         return tuple(shape)
 
     @property

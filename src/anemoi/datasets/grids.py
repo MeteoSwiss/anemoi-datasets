@@ -9,7 +9,6 @@
 
 
 import base64
-import logging
 
 import numpy as np
 
