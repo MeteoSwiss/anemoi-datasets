@@ -143,7 +143,7 @@ class Grids(GridsBase):
 
 
 class Cutout(GridsBase):
-    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None):
+    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None, same_variables=True):
         """Initializes a Cutout object for hierarchical management of Limited Area
         Models (LAMs) and a global dataset, handling overlapping regions.
 
@@ -158,7 +158,9 @@ class Cutout(GridsBase):
                 between grid points.
             plot (bool, optional): Flag to enable or disable visualization
                 plots.
+            same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
         """
+        self.same_variables = same_variables
         super().__init__(datasets, axis)
         assert len(datasets) >= 2, "CutoutGrids requires at least two datasets"
         assert axis == 3, "CutoutGrids requires axis=3"
@@ -173,6 +175,7 @@ class Cutout(GridsBase):
         self.neighbours = neighbours
         self.min_distance_km = min_distance_km
         self.plot = plot
+        self.same_variables = same_variables
         self.masks = []  # To store the masks for each LAM dataset
         self.global_mask = np.ones(self.globe.shape[-1], dtype=bool)
 
@@ -332,6 +335,12 @@ class Cutout(GridsBase):
         # Turned off because we are combining different resolutions
         pass
 
+    def check_same_variables(self, d1, d2):
+        if self.same_variables:
+            super().check_same_variables(d1, d2)
+        else:
+            pass
+
     @property
     def grids(self):
         """Returns the number of grid points for each LAM and the global dataset
@@ -416,6 +425,8 @@ def cutout_factory(args, kwargs):
     min_distance_km = kwargs.pop("min_distance_km", None)
     cropping_distance = kwargs.pop("cropping_distance", 2.0)
     neighbours = kwargs.pop("neighbours", 5)
+    same_variables = kwargs.pop("check_same_variables", True)
+
 
     assert len(args) == 0
     assert isinstance(cutout, (list, tuple)), "cutout must be a list or tuple"
@@ -430,4 +441,5 @@ def cutout_factory(args, kwargs):
         min_distance_km=min_distance_km,
         cropping_distance=cropping_distance,
         plot=plot,
+        same_variables=same_variables,
     )._subset(**kwargs)
