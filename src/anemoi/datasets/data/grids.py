@@ -500,7 +500,6 @@ def cutout_factory(args, kwargs):
         min_distance_km=min_distance_km,
         cropping_distance=cropping_distance,
         plot=plot,
-        same_variables=same_variables,
     )._subset(**kwargs)
 
 
