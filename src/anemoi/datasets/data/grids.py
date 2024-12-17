@@ -143,7 +143,7 @@ class Grids(GridsBase):
 
 
 class Cutout(GridsBase):
-    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None, same_variables=True):
+    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None):
         """Initializes a Cutout object for hierarchical management of Limited Area
         Models (LAMs) and a global dataset, handling overlapping regions.
 
@@ -160,7 +160,6 @@ class Cutout(GridsBase):
                 plots.
             same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
         """
-        self.same_variables = same_variables
         super().__init__(datasets, axis)
         assert len(datasets) >= 2, "CutoutGrids requires at least two datasets"
         assert axis == 3, "CutoutGrids requires axis=3"
@@ -175,7 +174,6 @@ class Cutout(GridsBase):
         self.neighbours = neighbours
         self.min_distance_km = min_distance_km
         self.plot = plot
-        self.same_variables = same_variables
         self.masks = []  # To store the masks for each LAM dataset
         self.global_mask = np.ones(self.globe.shape[-1], dtype=bool)
 
@@ -335,12 +333,6 @@ class Cutout(GridsBase):
         # Turned off because we are combining different resolutions
         pass
 
-    def check_same_variables(self, d1, d2):
-        if self.same_variables:
-            super().check_same_variables(d1, d2)
-        else:
-            pass
-
     @property
     def grids(self):
         """Returns the number of grid points for each LAM and the global dataset
@@ -399,6 +391,73 @@ class Cutout(GridsBase):
         return Node(self, [d.tree() for d in self.datasets])
 
 
+class MultiVariablesCutout(Cutout):
+    def __init__(self, datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None):
+        """Initializes a Cutout object for hierarchical management of Limited Area
+        Models (LAMs) and a global dataset, handling overlapping regions.
+
+        Args:
+            datasets (list): List of LAM and global datasets.
+            axis (int): Concatenation axis, must be set to 3.
+            cropping_distance (float): Distance threshold in degrees for
+                cropping cutouts.
+            neighbours (int): Number of neighboring points to consider when
+                constructing masks.
+            min_distance_km (float, optional): Minimum distance threshold in km
+                between grid points.
+            plot (bool, optional): Flag to enable or disable visualization
+                plots.
+            same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
+        """
+        super().__init__(datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None)
+    
+
+        self.lam_indexes = [np.sum(self.mask[i] for i in range(len(self.masks)))]
+        self.lam_shapes = [lam.shape[1] for lam in self.lams]
+        self.global_shape = self.globe.shape[1]
+
+
+    def check_same_variables(self, d1, d2):
+        pass
+
+
+    def _get_tuple(self, index):
+        """Helper method that applies masks and retrieves data from each dataset
+        according to the specified index.
+
+        Args:
+            index (tuple): Index specifying slices to retrieve data.
+
+        Returns:
+            np.ndarray: Concatenated data array from all datasets based on the
+                index.
+        """
+        index, changes = index_to_slices(index, self.shape)
+
+        # Select data from each LAM
+        lam_data = [lam[index[:3]] for lam in self.lams]
+
+        # First apply spatial indexing on `self.globe` and then apply the mask
+        globe_data_sliced = self.globe[index[:3]]
+        globe_data = globe_data_sliced[..., self.global_mask]
+
+        max_num_variables = np.max(np.max([lam.shape[1] for lam in lam_data]), self.globe.shape[1])
+
+        # Pad all data with zeros
+        padded_lam_data = []
+        for lam in lam_data:
+            p_l = np.zeros([lam.shape[0], max_num_variables, lam.shape[2], lam.shape[3]], np.float32)
+            p_l[:, :lam.shape[1], :, :] = lam
+            padded_lam_data.append(p_l)
+
+        padded_global = np.zeros([globe_data.shape[0], max_num_variables, globe_data.shape[2], globe_data.shape[3]], np.float32)
+        padded_global[:, :globe_data.shape[1], :, :] = globe_data
+
+        # Concatenate LAM data with global data, apply the grid slicing
+        result = np.concatenate(lam_data + [globe_data], axis=self.axis)[..., index[3]]
+
+        return apply_index_to_slices_changes(result, changes)
+    
 def grids_factory(args, kwargs):
     if "ensemble" in kwargs:
         raise NotImplementedError("Cannot use both 'ensemble' and 'grids'")
@@ -442,4 +501,31 @@ def cutout_factory(args, kwargs):
         cropping_distance=cropping_distance,
         plot=plot,
         same_variables=same_variables,
+    )._subset(**kwargs)
+
+
+def multivariablecutout_factory(args, kwargs):
+    if "ensemble" in kwargs:
+        raise NotImplementedError("Cannot use both 'ensemble' and 'multivariablecutout'")
+
+    cutout = kwargs.pop("multivariablecutout")
+    axis = kwargs.pop("axis", 3)
+    plot = kwargs.pop("plot", None)
+    min_distance_km = kwargs.pop("min_distance_km", None)
+    cropping_distance = kwargs.pop("cropping_distance", 2.0)
+    neighbours = kwargs.pop("neighbours", 5)
+
+    assert len(args) == 0
+    assert isinstance(cutout, (list, tuple)), "cutout must be a list or tuple"
+
+    datasets = [_open(e) for e in cutout]
+    datasets, kwargs = _auto_adjust(datasets, kwargs)
+
+    return MultiVariablesCutout(
+        datasets,
+        axis=axis,
+        neighbours=neighbours,
+        min_distance_km=min_distance_km,
+        cropping_distance=cropping_distance,
+        plot=plot,
     )._subset(**kwargs)

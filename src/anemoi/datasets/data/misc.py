@@ -334,6 +334,12 @@ def _open_dataset(*args, **kwargs):
 
         assert not sets, sets
         return cutout_factory(args, kwargs).mutate()
+    
+    if "multivariablecutout" in kwargs:
+        from .grids import multivariablecutout_factory
+
+        assert not sets, sets
+        return multivariablecutout_factory(args, kwargs).mutate()
 
     for name in ("datasets", "dataset"):
         if name in kwargs:
