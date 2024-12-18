@@ -420,7 +420,6 @@ class MultiVariablesCutout(Cutout):
         """
         super().__init__(datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None)
 
-        self.lam_indexes = [np.sum(self.mask[i] for i in range(len(self.masks)))]
         self.lam_shapes = [lam.shape[1] for lam in self.lams]
         self.global_shape = self.globe.shape[1]
 
@@ -447,7 +446,7 @@ class MultiVariablesCutout(Cutout):
         globe_data_sliced = self.globe[index[:3]]
         globe_data = globe_data_sliced[..., self.global_mask]
 
-        max_num_variables = np.max(np.max([lam.shape[1] for lam in lam_data]), self.globe.shape[1])
+        max_num_variables = np.max(np.max(self.lam_shapes), self.global_shape)
 
         # Pad all data with zeros
         padded_lam_data = []
