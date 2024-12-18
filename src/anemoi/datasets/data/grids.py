@@ -10,6 +10,7 @@
 
 import logging
 from functools import cached_property
+from typing import List
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -179,6 +180,14 @@ class Cutout(GridsBase):
 
         # Initialize cumulative masks
         self._initialize_masks()
+
+    @cached_property
+    def lam_variables(self) -> List[int]:
+        return [lam.shape[1] for lam in self.lams]
+
+    @cached_property
+    def global_variables(self) -> int:
+        return self.globe.shape[1]
 
     def _initialize_masks(self):
         """Generates hierarchical masks for each LAM dataset by excluding
@@ -410,23 +419,13 @@ class MultiVariablesCutout(Cutout):
             same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
         """
         super().__init__(datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None)
-    
 
         self.lam_indexes = [np.sum(self.mask[i] for i in range(len(self.masks)))]
         self.lam_shapes = [lam.shape[1] for lam in self.lams]
         self.global_shape = self.globe.shape[1]
 
-    @property
-    def lam_variables(self):
-        return [lam.shape[1] for lam in self.lams]
-
-    @property
-    def global_variables(self): 
-        return self.globe.shape[1]
-
     def check_same_variables(self, d1, d2):
         pass
-
 
     def _get_tuple(self, index):
         """Helper method that applies masks and retrieves data from each dataset
@@ -454,17 +453,20 @@ class MultiVariablesCutout(Cutout):
         padded_lam_data = []
         for lam in lam_data:
             p_l = np.zeros([lam.shape[0], max_num_variables, lam.shape[2], lam.shape[3]], np.float32)
-            p_l[:, :lam.shape[1], :, :] = lam
+            p_l[:, : lam.shape[1], :, :] = lam
             padded_lam_data.append(p_l)
 
-        padded_global = np.zeros([globe_data.shape[0], max_num_variables, globe_data.shape[2], globe_data.shape[3]], np.float32)
-        padded_global[:, :globe_data.shape[1], :, :] = globe_data
+        padded_global = np.zeros(
+            [globe_data.shape[0], max_num_variables, globe_data.shape[2], globe_data.shape[3]], np.float32
+        )
+        padded_global[:, : globe_data.shape[1], :, :] = globe_data
 
         # Concatenate LAM data with global data, apply the grid slicing
         result = np.concatenate(lam_data + [globe_data], axis=self.axis)[..., index[3]]
 
         return apply_index_to_slices_changes(result, changes)
-    
+
+
 def grids_factory(args, kwargs):
     if "ensemble" in kwargs:
         raise NotImplementedError("Cannot use both 'ensemble' and 'grids'")
@@ -491,8 +493,6 @@ def cutout_factory(args, kwargs):
     min_distance_km = kwargs.pop("min_distance_km", None)
     cropping_distance = kwargs.pop("cropping_distance", 2.0)
     neighbours = kwargs.pop("neighbours", 5)
-    same_variables = kwargs.pop("check_same_variables", True)
-
 
     assert len(args) == 0
     assert isinstance(cutout, (list, tuple)), "cutout must be a list or tuple"

@@ -20,6 +20,8 @@ Keep it human-readable, your future self will thank you!
 
 - Call filters from anemoi-transform
 - make test optional when adls is not installed Pull request #110
+- feat: new grid `MultiVariablesCutout` that allows for Cutout with dataset with different variables between lams and global.
+  Introduces 2 properties in Cutout: `lam_variables` and `global_variables`.
 
 ## [0.5.8](https://github.com/ecmwf/anemoi-datasets/compare/0.5.7...0.5.8) - 2024-10-26
 
