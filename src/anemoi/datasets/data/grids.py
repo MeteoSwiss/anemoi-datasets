@@ -416,6 +416,13 @@ class MultiVariablesCutout(Cutout):
         self.lam_shapes = [lam.shape[1] for lam in self.lams]
         self.global_shape = self.globe.shape[1]
 
+    @property
+    def lam_variables(self):
+        return [lam.shape[1] for lam in self.lams]
+
+    @property
+    def global_variables(self): 
+        return self.globe.shape[1]
 
     def check_same_variables(self, d1, d2):
         pass
