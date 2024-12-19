@@ -418,7 +418,7 @@ class MultiVariablesCutout(Cutout):
                 plots.
             same_variables (bool, optional): Flag to enable or disable the check_same_variables check.
         """
-        super().__init__(datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None)
+        super().__init__(datasets, axis, cropping_distance, neighbours, min_distance_km, plot)
 
         LOG.debug("Lam shape: %s", [lam.shape for lam in self.lams])
         LOG.debug("Global shape: %s", self.globe.shape)
