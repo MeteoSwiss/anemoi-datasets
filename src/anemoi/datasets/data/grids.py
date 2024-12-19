@@ -28,7 +28,7 @@ from .misc import _auto_adjust
 from .misc import _open
 
 LOG = logging.getLogger(__name__)
-
+LOG.setLevel("DEBUG")
 
 class Concat(Combined):
     def __len__(self):
@@ -420,10 +420,13 @@ class MultiVariablesCutout(Cutout):
         """
         super().__init__(datasets, axis=3, cropping_distance=2.0, neighbours=5, min_distance_km=None, plot=None)
 
-        self.lam_shapes = [lam.shape[1] for lam in self.lams]
-        self.global_shape = self.globe.shape[1]
+        LOG.debug("Lam shape: %s", [lam.shape for lam in self.lams])
+        LOG.debug("Global shape: %s", self.globe.shape)
 
     def check_same_variables(self, d1, d2):
+        pass
+
+    def check_same_sub_shapes(self, d1, d2, drop_axis):
         pass
 
     def _get_tuple(self, index):
@@ -446,7 +449,7 @@ class MultiVariablesCutout(Cutout):
         globe_data_sliced = self.globe[index[:3]]
         globe_data = globe_data_sliced[..., self.global_mask]
 
-        max_num_variables = np.max(np.max(self.lam_shapes), self.global_shape)
+        max_num_variables = max(max(self.lam_variables), self.global_variables)
 
         # Pad all data with zeros
         padded_lam_data = []
@@ -461,7 +464,7 @@ class MultiVariablesCutout(Cutout):
         padded_global[:, : globe_data.shape[1], :, :] = globe_data
 
         # Concatenate LAM data with global data, apply the grid slicing
-        result = np.concatenate(lam_data + [globe_data], axis=self.axis)[..., index[3]]
+        result = np.concatenate(padded_lam_data + [padded_global], axis=self.axis)[..., index[3]]
 
         return apply_index_to_slices_changes(result, changes)
 
