@@ -15,6 +15,11 @@ Keep it human-readable, your future self will thank you!
 - Fix metadata serialization handling of numpy.integer (#140)
 - Fix negative variance for constant variables (#148)
 - Fix cutout slicing of grid dimension (#145)
+- Use cKDTree instead of KDTree
+- Implement 'complement' feature
+- Add ability to patch xarrays (#160)
+- Add support of ECCC file formats (fstd)
+- Add `use_cdsapi_dataset` option to mars and accumulations
 
 ### Added
 
@@ -22,6 +27,8 @@ Keep it human-readable, your future self will thank you!
 - make test optional when adls is not installed Pull request #110
 - feat: new grid `MultiVariablesCutout` that allows for Cutout with dataset with different variables between lams and global.
   Introduces 2 properties in Cutout: `lam_variables` and `global_variables`.
+- Make test optional when adls is not installed Pull request #110
+- Add wz_to_w, orog_to_z, and sum filters (#149)
 
 ## [0.5.8](https://github.com/ecmwf/anemoi-datasets/compare/0.5.7...0.5.8) - 2024-10-26
 

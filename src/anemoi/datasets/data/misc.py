@@ -103,6 +103,30 @@ def _as_date(d, dates, last):
 
     if isinstance(d, str):
 
+        def isfloat(s):
+            try:
+                float(s)
+                return True
+            except ValueError:
+                return False
+
+        if d.endswith("%") and isfloat(d[:-1]):
+            x = float(d[:-1])
+            if not 0 <= x <= 100:
+                raise ValueError(f"Invalid date: {d}")
+            i_float = x * len(dates) / 100
+
+            epsilon = 2 ** (-30)
+            if len(dates) > 1 / epsilon:
+                LOG.warning("Too many dates to use percentage, one date may be lost in rounding")
+
+            if last:
+                index = int(i_float + epsilon) - 1
+            else:
+                index = int(i_float - epsilon)
+            index = max(0, min(len(dates) - 1, index))
+            return dates[index]
+
         if "-" in d and ":" in d:
             date, time = d.replace(" ", "T").split("T")
             year, month, day = [int(_) for _ in date.split("-")]
@@ -194,7 +218,7 @@ def _open(a):
     raise NotImplementedError(f"Unsupported argument: {type(a)}")
 
 
-def _auto_adjust(datasets, kwargs):
+def _auto_adjust(datasets, kwargs, exclude=None):
 
     if "adjust" not in kwargs:
         return datasets, kwargs
@@ -213,6 +237,9 @@ def _auto_adjust(datasets, kwargs):
 
     for a in adjust_list:
         adjust_set.update(ALIASES.get(a, [a]))
+
+    if exclude is not None:
+        adjust_set -= set(exclude)
 
     extra = set(adjust_set) - set(ALIASES["all"])
     if extra:

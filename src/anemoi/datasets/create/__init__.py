@@ -79,7 +79,10 @@ def json_tidy(o):
         )
         return o.isoformat()
 
-    raise TypeError(repr(o) + " is not JSON serializable")
+    if isinstance(o, (np.float32, np.float64)):
+        return float(o)
+
+    raise TypeError(f"{repr(o)} is not JSON serializable {type(o)}")
 
 
 def build_statistics_dates(dates, start, end):
@@ -596,6 +599,8 @@ class Load(Actor, HasRegistryMixin, HasStatisticTempMixin, HasElementForDataMixi
         # There is one cube to load for each result.
         dates = list(result.group_of_dates)
 
+        LOG.debug(f"Loading cube for {len(dates)} dates")
+
         cube = result.get_cube()
         shape = cube.extended_user_shape
         dates_in_data = cube.user_coords["valid_datetime"]
@@ -622,10 +627,14 @@ class Load(Actor, HasRegistryMixin, HasStatisticTempMixin, HasElementForDataMixi
 
         check_shape(cube, dates, dates_in_data)
 
-        def check_dates_in_data(lst, lst2):
-            lst2 = [np.datetime64(_) for _ in lst2]
-            lst = [np.datetime64(_) for _ in lst]
-            assert lst == lst2, ("Dates in data are not the requested ones:", lst, lst2)
+        def check_dates_in_data(dates_in_data, requested_dates):
+            requested_dates = [np.datetime64(_) for _ in requested_dates]
+            dates_in_data = [np.datetime64(_) for _ in dates_in_data]
+            assert dates_in_data == requested_dates, (
+                "Dates in data are not the requested ones:",
+                dates_in_data,
+                requested_dates,
+            )
 
         check_dates_in_data(dates_in_data, dates)
 
@@ -638,12 +647,14 @@ class Load(Actor, HasRegistryMixin, HasStatisticTempMixin, HasElementForDataMixi
         indexes = dates_to_indexes(self.dates, dates_in_data)
 
         array = ViewCacheArray(self.data_array, shape=shape, indexes=indexes)
+        LOG.info(f"Loading array shape={shape}, indexes={len(indexes)}")
         self.load_cube(cube, array)
 
         stats = compute_statistics(array.cache, self.variables_names, allow_nans=self._get_allow_nans())
         self.tmp_statistics.write(indexes, stats, dates=dates_in_data)
-
+        LOG.info("Flush data array")
         array.flush()
+        LOG.info("Flushed data array")
 
     def _get_allow_nans(self):
         config = self.main_config
@@ -736,6 +747,11 @@ class AdditionsMixin:
         if not self.delta.total_seconds() % frequency.total_seconds() == 0:
             LOG.debug(f"Delta {self.delta} is not a multiple of frequency {frequency}. Skipping.")
             return True
+
+        if self.dataset.zarr_metadata.get("build", {}).get("additions", None) is False:
+            LOG.warning(f"Additions are disabled for {self.path} in the recipe.")
+            return True
+
         return False
 
     @cached_property
