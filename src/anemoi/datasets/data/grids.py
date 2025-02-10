@@ -30,6 +30,7 @@ from .misc import _open
 LOG = logging.getLogger(__name__)
 LOG.setLevel("DEBUG")
 
+
 class Concat(Combined):
     def __len__(self):
         return sum(len(i) for i in self.datasets)
