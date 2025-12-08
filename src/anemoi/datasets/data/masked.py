@@ -10,6 +10,7 @@
 
 import logging
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -215,19 +216,24 @@ class Masking(Masked):
             Path to a .npy file containing a boolean mask of same shape as fields.
         """
         self.mask_file = mask_file
+
+        # Check path
+        if not Path(self.mask_file).exists():
+            raise FileNotFoundError(f"Mask file not found: {self.mask_file}")
         # Load mask
-        mask = np.load(mask_file)
+        try:
+            mask = np.load(self.mask_file)
+        except Exception as e:
+            raise ValueError(f"Could not load data from {mask_file}: {e}")
+
         if mask.dtype != bool:
-            raise ValueError(
-                f"Mask file {mask_file} does not contain boolean values."
-            )
+            raise ValueError(f"Mask file {mask_file} does not contain boolean values.")
         if mask.shape != forward.field_shape:
-            raise ValueError(
-                f"Mask length {mask.shape} does not match field size {forward.field_shape}."
-            )
+            raise ValueError(f"Mask length {mask.shape} does not match field size {forward.field_shape}.")
+        if sum(mask) == 0:
+            LOG.warning(f"Mask in {mask_file} eliminates all points in field.")
 
         super().__init__(forward, mask)
-
 
     def tree(self) -> Node:
         """Get the tree representation of the dataset.
