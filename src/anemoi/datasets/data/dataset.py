@@ -259,6 +259,12 @@ class Dataset(ABC, Sized):
             method = kwargs.pop("method", "every-nth")
             return Thinning(self, thinning, method)._subset(**kwargs).mutate()
 
+        if "mask" in kwargs:
+            from .masked import Masking
+
+            mask_file = kwargs.pop("mask")
+            return Masking(self, mask_file)._subset(**kwargs).mutate()
+
         if "area" in kwargs:
             from .masked import Cropping
 

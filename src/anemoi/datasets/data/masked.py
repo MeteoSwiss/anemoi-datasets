@@ -201,6 +201,55 @@ class Thinning(Masked):
         return dict(thinning=self.thinning, method=self.method)
 
 
+class Masking(Masked):
+    """A class that applies a precomputed boolean mask from a .npy file."""
+
+    def __init__(self, forward: Dataset, mask_file: str) -> None:
+        """Initialize the Masking class.
+
+        Parameters
+        ----------
+        forward : Dataset
+            The dataset to be masked.
+        mask_file : str
+            Path to a .npy file containing a boolean mask of same shape as fields.
+        """
+        self.mask_file = mask_file
+        # Load mask
+        mask = np.load(mask_file)
+        if mask.dtype != bool:
+            raise ValueError(
+                f"Mask file {mask_file} does not contain boolean values."
+            )
+        if mask.shape != forward.field_shape:
+            raise ValueError(
+                f"Mask length {mask.shape} does not match field size {forward.field_shape}."
+            )
+
+        super().__init__(forward, mask)
+
+
+    def tree(self) -> Node:
+        """Get the tree representation of the dataset.
+
+        Returns
+        -------
+        Node
+            The tree representation of the dataset.
+        """
+        return Node(self, [self.forward.tree()], mask_file=self.mask_file)
+
+    def forwards_subclass_metadata_specific(self) -> dict[str, Any]:
+        """Get the metadata specific to the Masking subclass.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The metadata specific to the Masking subclass.
+        """
+        return dict(mask_file=self.mask_file)
+
+
 class Cropping(Masked):
     """A class to represent a cropped dataset."""
 
